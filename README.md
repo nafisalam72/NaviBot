@@ -7,26 +7,21 @@
 
 ---
 
-## Chosen Vertical
+## 🎯 Problem Statement Alignment (Challenge 4)
 
-> **Smart Multilingual Navigation & Crowd Management Assistant**
+NaviBot is a GenAI-enabled solution strictly designed to **enhance stadium operations and the overall tournament experience for fans, organizers, volunteers, or venue staff.** This solution actively leverages Generative AI to improve **navigation, crowd management, accessibility, transportation, sustainability, multilingual assistance, operational intelligence, and real-time decision support** during the **FIFA World Cup 2026.**
 
-This project was built for **HACK2SKILL Challenge 4 – FIFA World Cup 2026**. The chosen vertical is the **Smart Multilingual Navigation & Crowd Management Assistant**, which uses a Groq-powered LLM (Llama 3 70B) to help stadium fans navigate venues, find facilities, avoid crowds, and receive guidance in English, Spanish, or French.
+## 💡 How the Solution Works
+1. **Multilingual Assistance:** Detects language and responds in English, Spanish, or French to assist international fans.
+2. **Crowd Management:** Reads zone density (1-10) and redirects fans to alternative gates.
+3. **Accessibility:** Flags wheelchair-inaccessible zones and provides alternative accessible routes.
+4. **Efficiency:** Uses an in-memory SHA-256 cache to prevent duplicate API calls, returning instant answers.
 
----
-
-## Problem Statement Alignment
-
-The FIFA World Cup 2026 will be hosted across 16 cities in the USA, Canada, and Mexico — with stadiums holding 60,000–100,000 fans each. This creates real operational challenges:
-
-| Real-World Problem | How NaviBot Solves It |
-|---|---|
-| Fan can't find the nearest restroom | Asks NaviBot → gets exact block/gate directions for their section |
-| Exit routes are congested post-match | NaviBot checks crowd level and suggests low-density alternative exits |
-| Wheelchair user stuck in inaccessible zone | NaviBot flags non-accessible sections and redirects to accessible routes |
-| International fan doesn't speak English | Language toggle (EN / ES / FR) sends entire response in chosen language |
-| Food stall queues are unknown | NaviBot lists food stalls per section with crowd context |
-| Fan asks same question twice | In-memory cache returns instant answer, zero API cost |
+## ⚙️ Execution Flow
+1. User input is strictly sanitised to prevent prompt injection.
+2. Regex classifies the intent (restroom, food, exit, crowd).
+3. The context is passed to the Groq API (Llama-3 70B) with strict system instructions limiting it ONLY to FIFA 2026 operations.
+4. Response is displayed in an accessible (ARIA-compliant) UI.
 
 ---
 
