@@ -1,3 +1,6 @@
+# Project: NaviBot - AI Assistant
+# Category: [Challenge 4] Smart Stadiums & Tournament
+# Target: FIFA World Cup 2026 Crowd Management & Navigation
 """
 app.py
 ------
@@ -7,15 +10,16 @@ Smart Multilingual Navigation & Crowd Management Assistant.
 Endpoints
 ---------
 GET  /             – Serve the main chat UI (index.html)
-POST /ask          – Accept a fan query and return an LLM-powered response
-GET  /stadiums     – List available stadiums
-GET  /sections     – List sections for a given stadium
+POST /ask          – Accept a fan stadium query and return an LLM-powered response
+GET  /stadiums     – List available FIFA 2026 host stadiums
+GET  /sections     – List stadium zones and crowd levels for a given stadium
 GET  /health       – Health-check / liveness probe
 
 Security
 --------
-- CORS is restricted to localhost origins in this demo; tighten for production.
-- All user input is sanitised inside ``llm_handler.get_navigation_response``.
+- CORS is restricted to configurable origins via the ALLOWED_ORIGINS env var.
+- All fan input is sanitised inside ``llm_handler.get_navigation_response``.
+- Fan stadium queries are hard-capped at 300 characters to prevent token exhaustion.
 - The Groq API key is read from the environment; it never appears in responses.
 
 Usage
@@ -44,6 +48,13 @@ from llm_handler import (
 from stadium_data import DEFAULT_STADIUM, STADIUMS, get_stadium_names
 
 # ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+MAX_FAN_QUERY_LENGTH: int = 300
+"""Hard limit on fan stadium query length to prevent token exhaustion attacks."""
+
+# ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
 
@@ -70,9 +81,13 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS – restrict to localhost origins or allow via env var
-allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000")
-allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+# CORS – restrict to configurable origins via environment variable
+allowed_origins_env = os.getenv(
+    "ALLOWED_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000"
+)
+allowed_origins = [
+    origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -92,14 +107,25 @@ if _STATIC_DIR.exists():
 # ---------------------------------------------------------------------------
 
 
-class AskRequest(BaseModel):
-    """Schema for the POST /ask request body."""
+class FanStadiumQueryRequest(BaseModel):
+    """Schema for the POST /ask request body.
 
-    query: str = Field(
+    Attributes
+    ----------
+    fan_stadium_query : str
+        The fan's natural-language question about the stadium (max 300 chars).
+    language : str
+        ISO 639-1 language code for the response language.
+    stadium_name : str
+        Name of the FIFA 2026 host stadium.
+    """
+
+    fan_stadium_query: str = Field(
         ...,
+        alias="query",
         min_length=1,
-        max_length=1000,
-        description="The fan's question in natural language.",
+        max_length=MAX_FAN_QUERY_LENGTH,
+        description="The fan's stadium question in natural language (max 300 chars).",
         examples=["Where is the nearest restroom near Section B?"],
     )
     language: str = Field(
@@ -107,11 +133,14 @@ class AskRequest(BaseModel):
         description="ISO 639-1 language code: 'en', 'es', or 'fr'.",
         examples=["en"],
     )
-    stadium: str = Field(
+    stadium_name: str = Field(
         default=DEFAULT_STADIUM,
-        description="Name of the stadium (must match available stadiums).",
+        alias="stadium",
+        description="Name of the FIFA 2026 host stadium (must match registry).",
         examples=["MetLife Stadium"],
     )
+
+    model_config = {"populate_by_name": True}
 
     @field_validator("language")
     @classmethod
@@ -140,10 +169,10 @@ class AskRequest(BaseModel):
             )
         return value
 
-    @field_validator("stadium")
+    @field_validator("stadium_name")
     @classmethod
-    def validate_stadium(cls, value: str) -> str:
-        """Ensure the requested stadium exists in the registry.
+    def validate_stadium_name(cls, value: str) -> str:
+        """Ensure the requested stadium exists in the FIFA 2026 registry.
 
         Parameters
         ----------
@@ -168,19 +197,53 @@ class AskRequest(BaseModel):
         return value
 
 
-class AskResponse(BaseModel):
-    """Schema for the POST /ask JSON response."""
+class NaviBotResponse(BaseModel):
+    """Schema for the POST /ask JSON response.
 
-    response: str = Field(..., description="Natural-language answer from NaviBot.")
-    section: str | None = Field(None, description="Detected section identifier.")
-    intent: str = Field(..., description="Classified query intent.")
-    cached: bool = Field(..., description="True if the response was served from cache.")
-    crowd_level: int | None = Field(None, description="Numeric crowd level (1–10).")
+    Attributes
+    ----------
+    fifa_agent_response : str
+        Natural-language answer from NaviBot.
+    stadium_zone : str or None
+        Detected stadium section/zone identifier.
+    fan_query_intent : str
+        Classified intent of the fan's query.
+    cached : bool
+        True if the response was served from the in-memory cache.
+    crowd_level : int or None
+        Numeric crowd level (1–10) for the detected stadium zone.
+    crowd_category : str or None
+        Human-readable crowd category: Low / Medium / High.
+    stadium_name : str
+        Stadium the query was directed to.
+    language : str
+        Language code of the response.
+    """
+
+    fifa_agent_response: str = Field(
+        ..., alias="response", description="Natural-language answer from NaviBot."
+    )
+    stadium_zone: str | None = Field(
+        None, alias="section", description="Detected stadium zone identifier."
+    )
+    fan_query_intent: str = Field(
+        ..., alias="intent", description="Classified fan query intent."
+    )
+    cached: bool = Field(
+        ..., description="True if the response was served from cache."
+    )
+    crowd_level: int | None = Field(
+        None, description="Numeric crowd level (1–10)."
+    )
     crowd_category: str | None = Field(
         None, description="Human-readable crowd category: Low / Medium / High."
     )
-    stadium: str = Field(..., description="Stadium the query was directed to.")
+    stadium_name: str = Field(
+        ..., alias="stadium", description="Stadium the query was directed to."
+    )
     language: str = Field(..., description="Language code of the response.")
+
+    model_config = {"populate_by_name": True}
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +253,7 @@ class AskResponse(BaseModel):
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def serve_index() -> FileResponse:
-    """Serve the main frontend HTML page.
+    """Serve the main frontend HTML page for NaviBot.
 
     Returns
     -------
@@ -208,45 +271,49 @@ async def serve_index() -> FileResponse:
     return FileResponse(str(index_path))
 
 
-@app.post("/ask", response_model=AskResponse, summary="Ask NaviBot a stadium question")
-async def ask(payload: AskRequest) -> AskResponse:
-    """Process a fan's natural-language question and return a multilingual response.
+@app.post(
+    "/ask",
+    response_model=NaviBotResponse,
+    summary="Ask NaviBot a stadium question",
+)
+async def ask_navibot(payload: FanStadiumQueryRequest) -> NaviBotResponse:
+    """Process a fan's natural-language stadium question and return a response.
 
     This endpoint orchestrates:
-    1. Input validation (via Pydantic).
-    2. Intent extraction and entity recognition.
-    3. Mock stadium data retrieval.
-    4. LLM prompt construction and Groq API call (with caching).
-    5. Structured JSON response.
+    1. Input validation and length enforcement (via Pydantic, max 300 chars).
+    2. Intent extraction and stadium zone entity recognition.
+    3. Mock stadium data retrieval for the detected zone.
+    4. LLM prompt construction and Groq API call (with SHA-256 caching).
+    5. Structured JSON response with crowd metadata.
 
     Parameters
     ----------
-    payload : AskRequest
-        The validated request body containing the query, language, and stadium.
+    payload : FanStadiumQueryRequest
+        The validated request body containing the fan query, language, and stadium.
 
     Returns
     -------
-    AskResponse
-        A structured response including the LLM answer and metadata.
+    NaviBotResponse
+        A structured response including the LLM answer and stadium metadata.
 
     Raises
     ------
     HTTPException
-        422 on validation errors.
+        422 on validation errors (bad language, stadium, or query too long).
         503 if the Groq API key is missing.
         500 on unexpected server errors.
     """
     logger.info(
-        "POST /ask | stadium=%s | lang=%s | query=%s",
-        payload.stadium,
+        "POST /ask | stadium=%s | lang=%s | fan_query=%s",
+        payload.stadium_name,
         payload.language,
-        payload.query[:80],
+        payload.fan_stadium_query[:80],
     )
     try:
-        result: dict[str, object] = get_navigation_response(
-            query=payload.query,
+        fifa_agent_result: dict[str, object] = get_navigation_response(
+            fan_stadium_query=payload.fan_stadium_query,
             language_code=payload.language,
-            stadium=payload.stadium,
+            stadium_name=payload.stadium_name,
         )
     except EnvironmentError as env_err:
         logger.error("Environment error: %s", env_err)
@@ -261,9 +328,9 @@ async def ask(payload: AskRequest) -> AskResponse:
             detail="An internal error occurred. Please try again.",
         ) from exc
 
-    return AskResponse(
-        **result,
-        stadium=payload.stadium,
+    return NaviBotResponse(
+        **fifa_agent_result,
+        stadium_name=payload.stadium_name,
         language=payload.language,
     )
 
@@ -271,15 +338,15 @@ async def ask(payload: AskRequest) -> AskResponse:
 @app.get(
     "/stadiums",
     response_model=list[str],
-    summary="List all available stadiums",
+    summary="List all available FIFA 2026 host stadiums",
 )
 async def list_stadiums() -> list[str]:
-    """Return a sorted list of all stadium names in the registry.
+    """Return a sorted list of all FIFA 2026 host stadium names.
 
     Returns
     -------
     list[str]
-        Alphabetically sorted stadium names.
+        Alphabetically sorted stadium names from the registry.
     """
     return get_stadium_names()
 
@@ -287,54 +354,54 @@ async def list_stadiums() -> list[str]:
 @app.get(
     "/sections",
     response_model=dict[str, object],
-    summary="List sections for a stadium",
+    summary="List stadium zones for a given stadium",
 )
-async def list_sections(
+async def list_stadium_zones(
     stadium: str = Query(
         default=DEFAULT_STADIUM,
-        description="Name of the stadium.",
+        description="Name of the FIFA 2026 host stadium.",
     )
 ) -> dict[str, object]:
-    """Return all section identifiers and their crowd levels for a stadium.
+    """Return all stadium zone identifiers and their crowd levels.
 
     Parameters
     ----------
     stadium : str
-        Query parameter – the stadium name.
+        Query parameter – the FIFA 2026 host stadium name.
 
     Returns
     -------
     dict
-        ``{stadium: str, sections: list[dict]}`` with section id and crowd info.
+        ``{stadium: str, sections: list[dict]}`` with zone id and crowd info.
 
     Raises
     ------
     HTTPException
-        404 if the stadium is not found.
+        404 if the stadium is not found in the registry.
     """
     if stadium not in STADIUMS:
         raise HTTPException(
             status_code=404,
             detail=f"Stadium '{stadium}' not found. Available: {get_stadium_names()}",
         )
-    sections_info = [
+    stadium_zone_info = [
         {
-            "id": sec_id,
-            "crowd_level": sec_data["crowd_level"],
-            "wheelchair_accessible": sec_data["wheelchair_accessible"],
+            "id": zone_id,
+            "crowd_level": zone_data["crowd_level"],
+            "wheelchair_accessible": zone_data["wheelchair_accessible"],
         }
-        for sec_id, sec_data in STADIUMS[stadium].items()
+        for zone_id, zone_data in STADIUMS[stadium].items()
     ]
-    return {"stadium": stadium, "sections": sections_info}
+    return {"stadium": stadium, "sections": stadium_zone_info}
 
 
 @app.get("/health", summary="Health check")
 async def health_check() -> JSONResponse:
-    """Liveness probe – confirms the server is running.
+    """Liveness probe – confirms the NaviBot server is running.
 
     Returns
     -------
     JSONResponse
-        ``{"status": "ok"}``
+        ``{"status": "ok", "version": "1.0.0"}``
     """
     return JSONResponse(content={"status": "ok", "version": "1.0.0"})

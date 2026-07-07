@@ -1,10 +1,13 @@
+# Project: NaviBot - AI Assistant
+# Category: [Challenge 4] Smart Stadiums & Tournament
+# Target: FIFA World Cup 2026 Crowd Management & Navigation
 """
 stadium_data.py
 ---------------
 Provides mock static stadium data for FIFA World Cup 2026 venues.
 
 This module simulates the data that would ordinarily come from a real-time
-IoT/GPS system. It stores section-level details (restrooms, exits, food
+IoT/GPS system. It stores zone-level details (restrooms, exits, food
 stalls, wheelchair accessibility, and live crowd levels) for each of the
 primary FIFA 2026 host stadiums.
 
@@ -13,17 +16,22 @@ Assumptions
 - Data is mock/static because real-time GPS feeds are unavailable in this demo.
 - Crowd levels (1–10) are simulated; a production system would ingest live
   sensor data from stadium management platforms.
-- Sections A–E are representative; real stadiums have many more zones.
+- Stadium Zones A–E are representative; real stadiums have many more zones.
 """
 
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# Type alias for section data
+# Type alias for stadium zone data
 # ---------------------------------------------------------------------------
-SectionData = dict[str, object]
-StadiumSections = dict[str, SectionData]
-StadiumRegistry = dict[str, StadiumSections]
+StadiumZoneData = dict[str, object]
+"""Type alias for a single stadium zone's attribute dictionary."""
+
+StadiumZones = dict[str, StadiumZoneData]
+"""Type alias for all zones within a single stadium."""
+
+StadiumRegistry = dict[str, StadiumZones]
+"""Type alias for the complete FIFA 2026 stadium registry."""
 
 # ---------------------------------------------------------------------------
 # FIFA 2026 Host Stadiums – Mock Data
@@ -211,12 +219,12 @@ CROWD_THRESHOLDS: dict[str, tuple[int, int]] = {
     "High": (7, 10),
 }
 
-# Default stadium used when none is specified
+# Default FIFA 2026 host stadium used when none is specified
 DEFAULT_STADIUM: str = "MetLife Stadium"
 
 
 def get_stadium_names() -> list[str]:
-    """Return a list of all available stadium names.
+    """Return a sorted list of all available FIFA 2026 host stadium names.
 
     Returns
     -------
@@ -226,26 +234,26 @@ def get_stadium_names() -> list[str]:
     return sorted(STADIUMS.keys())
 
 
-def get_section_data(stadium: str, section: str) -> SectionData | None:
-    """Retrieve data for a specific section within a stadium.
+def get_section_data(stadium_name: str, stadium_zone: str) -> StadiumZoneData | None:
+    """Retrieve data for a specific zone within a FIFA 2026 host stadium.
 
     Parameters
     ----------
-    stadium : str
+    stadium_name : str
         The name of the stadium (case-sensitive, must match STADIUMS keys).
-    section : str
-        The section identifier (e.g. ``"A"``, ``"B"``).
+    stadium_zone : str
+        The zone identifier (e.g. ``"A"``, ``"B"``).
 
     Returns
     -------
-    SectionData or None
-        A dictionary of section attributes, or ``None`` if the stadium or
-        section does not exist in the registry.
+    StadiumZoneData or None
+        A dictionary of zone attributes, or ``None`` if the stadium or
+        zone does not exist in the registry.
     """
-    stadium_sections: StadiumSections | None = STADIUMS.get(stadium)
-    if stadium_sections is None:
+    stadium_zones: StadiumZones | None = STADIUMS.get(stadium_name)
+    if stadium_zones is None:
         return None
-    return stadium_sections.get(section.upper())
+    return stadium_zones.get(stadium_zone.upper())
 
 
 def categorise_crowd(crowd_level: int) -> str:
@@ -271,4 +279,4 @@ def categorise_crowd(crowd_level: int) -> str:
     for label, (low, high) in CROWD_THRESHOLDS.items():
         if low <= crowd_level <= high:
             return label
-    return "Unknown"  # Unreachable, but satisfies type checkers
+    return "Unknown"

@@ -1,3 +1,6 @@
+<!-- Project: NaviBot - AI Assistant -->
+<!-- Category: [Challenge 4] Smart Stadiums & Tournament -->
+<!-- Target: FIFA World Cup 2026 Crowd Management & Navigation -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -357,7 +360,7 @@
         aria-label="Type your stadium question here"
         aria-required="true"
         rows="1"
-        maxlength="1000"
+        maxlength="300"
       ></textarea>
       <button id="sendBtn" aria-label="Send message to NaviBot">
         <span aria-hidden="true">➤</span> Send
@@ -367,11 +370,19 @@
 </main>
 
 <script>
-  // ── State ──────────────────────────────────────────────────────────────────
-  let currentLang = 'en';
-  let currentStadium = 'MetLife Stadium';
+  // Project: NaviBot - AI Assistant
+  // Category: [Challenge 4] Smart Stadiums & Tournament
+  // Target: FIFA World Cup 2026 Crowd Management & Navigation
 
-  const STADIUMS_DATA = {
+  /** @type {string} Current selected language ISO code */
+  let currentLang = 'en';
+  /** @type {string} Current selected FIFA 2026 host stadium */
+  let currentStadium = 'MetLife Stadium';
+  /** @type {number} Maximum allowed fan query length */
+  const MAX_FAN_QUERY_LENGTH = 300;
+
+  /** @type {Object} Stadium zone crowd data for FIFA 2026 host venues */
+  const STADIUM_ZONE_DATA = {
     'MetLife Stadium': {
       A: { crowd: 3 }, B: { crowd: 7 }, C: { crowd: 5 }, D: { crowd: 9 }, E: { crowd: 2 }
     },
@@ -383,32 +394,40 @@
     }
   };
 
+  /**
+   * Classify a numeric crowd level into a CSS class.
+   * @param {number} level - Crowd level from 1 to 10.
+   * @returns {string} One of 'low', 'medium', or 'high'.
+   */
   function crowdClass(level) {
     if (level <= 3) return 'low';
     if (level <= 6) return 'medium';
     return 'high';
   }
 
-  // ── Render section crowd grid ──────────────────────────────────────────────
-  function renderGrid(stadium) {
+  /**
+   * Render the stadium zone crowd grid for the selected FIFA 2026 venue.
+   * @param {string} stadiumName - The selected FIFA 2026 host stadium.
+   */
+  function renderStadiumZoneGrid(stadiumName) {
     const grid = document.getElementById('sectionGrid');
     grid.innerHTML = '';
-    const sections = STADIUMS_DATA[stadium] || {};
-    Object.entries(sections).forEach(([id, d]) => {
-      const cls = crowdClass(d.crowd);
+    const stadiumZones = STADIUM_ZONE_DATA[stadiumName] || {};
+    Object.entries(stadiumZones).forEach(([zoneId, zoneInfo]) => {
+      const cls = crowdClass(zoneInfo.crowd);
       const cell = document.createElement('div');
       cell.className = `sec-cell ${cls}`;
       cell.setAttribute('role', 'listitem');
-      cell.setAttribute('aria-label', `Section ${id}, crowd level ${d.crowd} out of 10, ${cls}`);
-      cell.innerHTML = `<div class="sec-id">${id}</div><div class="sec-crowd">${d.crowd}/10</div>`;
+      cell.setAttribute('aria-label', `Stadium Zone ${zoneId}, crowd level ${zoneInfo.crowd} out of 10, ${cls}`);
+      cell.innerHTML = `<div class="sec-id">${zoneId}</div><div class="sec-crowd">${zoneInfo.crowd}/10</div>`;
       cell.addEventListener('click', () => {
-        document.getElementById('userInput').value = `What is happening in section ${id}? How crowded is it?`;
+        document.getElementById('userInput').value = `What is happening in section ${zoneId}? How crowded is it?`;
       });
       grid.appendChild(cell);
     });
   }
 
-  // ── Language toggle ────────────────────────────────────────────────────────
+  // Language toggle
   document.querySelectorAll('.lang-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       currentLang = btn.dataset.lang;
@@ -422,30 +441,36 @@
     });
   });
 
-  // ── Stadium selector ───────────────────────────────────────────────────────
+  // Stadium selector
   document.getElementById('stadiumSelect').addEventListener('change', function () {
     currentStadium = this.value;
-    renderGrid(currentStadium);
+    renderStadiumZoneGrid(currentStadium);
   });
 
-  // ── Quick prompts ──────────────────────────────────────────────────────────
+  // Quick prompts
   document.querySelectorAll('.quick-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.getElementById('userInput').value = btn.dataset.q;
-      sendMessage();
+      sendFanStadiumQuery();
     });
   });
 
-  // ── Send on Enter (Shift+Enter = newline) ──────────────────────────────────
+  // Send on Enter (Shift+Enter = newline)
   document.getElementById('userInput').addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      sendFanStadiumQuery();
     }
   });
-  document.getElementById('sendBtn').addEventListener('click', sendMessage);
+  document.getElementById('sendBtn').addEventListener('click', sendFanStadiumQuery);
 
-  // ── Append message bubble ──────────────────────────────────────────────────
+  /**
+   * Append a chat message bubble to the conversation log.
+   * @param {string} role - 'bot' or 'user'.
+   * @param {string} text - The message text content.
+   * @param {Object|null} meta - Optional metadata (cached, intent, crowd info).
+   * @returns {HTMLElement} The created message wrapper element.
+   */
   function appendMessage(role, text, meta) {
     const log = document.getElementById('chatMessages');
     const wrap = document.createElement('div');
@@ -458,7 +483,6 @@
 
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
-    // Render line breaks but escape HTML
     bubble.innerHTML = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>');
 
     if (meta) {
@@ -467,12 +491,12 @@
       if (meta.cached) {
         metaDiv.innerHTML += `<span class="meta-tag cached" aria-label="Response from cache">⚡ Cached</span>`;
       }
-      if (meta.intent) {
-        metaDiv.innerHTML += `<span class="meta-tag intent" aria-label="Query intent: ${meta.intent}">🎯 ${meta.intent}</span>`;
+      if (meta.fanQueryIntent) {
+        metaDiv.innerHTML += `<span class="meta-tag intent" aria-label="Fan query intent: ${meta.fanQueryIntent}">🎯 ${meta.fanQueryIntent}</span>`;
       }
-      if (meta.crowd_category) {
-        const cc = meta.crowd_category.toLowerCase();
-        metaDiv.innerHTML += `<span class="meta-tag crowd-${cc}" aria-label="Crowd level: ${meta.crowd_category}">👥 Crowd: ${meta.crowd_category} (${meta.crowd_level}/10)</span>`;
+      if (meta.crowdCategory) {
+        const cc = meta.crowdCategory.toLowerCase();
+        metaDiv.innerHTML += `<span class="meta-tag crowd-${cc}" aria-label="Crowd level: ${meta.crowdCategory}">👥 Crowd: ${meta.crowdCategory} (${meta.crowdLevel}/10)</span>`;
       }
       bubble.appendChild(metaDiv);
     }
@@ -484,37 +508,51 @@
     return wrap;
   }
 
-  // ── Typing indicator ───────────────────────────────────────────────────────
+  /** Show the NaviBot typing indicator in the chat log. */
   function showTyping() {
     const log = document.getElementById('chatMessages');
     const wrap = document.createElement('div');
     wrap.className = 'msg bot';
     wrap.id = 'typingIndicator';
     const avatar = document.createElement('div');
-    avatar.className = 'avatar bot'; avatar.setAttribute('aria-hidden','true'); avatar.textContent = '🤖';
+    avatar.className = 'avatar bot';
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.textContent = '🤖';
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     bubble.innerHTML = '<div class="typing" aria-label="NaviBot is typing"><span></span><span></span><span></span></div>';
-    wrap.appendChild(avatar); wrap.appendChild(bubble);
+    wrap.appendChild(avatar);
+    wrap.appendChild(bubble);
     log.appendChild(wrap);
     log.scrollTop = log.scrollHeight;
   }
 
+  /** Remove the NaviBot typing indicator from the chat log. */
   function removeTyping() {
-    const t = document.getElementById('typingIndicator');
-    if (t) t.remove();
+    const indicator = document.getElementById('typingIndicator');
+    if (indicator) indicator.remove();
   }
 
-  // ── Main send function ─────────────────────────────────────────────────────
-  async function sendMessage() {
+  /**
+   * Send the fan's stadium query to the NaviBot API and display the response.
+   * Validates input length (max 300 chars), calls POST /ask, and renders
+   * the fifaAgentResponse in the chat UI.
+   */
+  async function sendFanStadiumQuery() {
     const input = document.getElementById('userInput');
     const sendBtn = document.getElementById('sendBtn');
     const errorBanner = document.getElementById('errorBanner');
-    const query = input.value.trim();
-    if (!query) return;
+    const fanStadiumQuery = input.value.trim();
+    if (!fanStadiumQuery) return;
+
+    if (fanStadiumQuery.length > MAX_FAN_QUERY_LENGTH) {
+      errorBanner.textContent = `⚠ Query too long. Please limit to ${MAX_FAN_QUERY_LENGTH} characters.`;
+      errorBanner.style.display = 'block';
+      return;
+    }
 
     errorBanner.style.display = 'none';
-    appendMessage('user', query, null);
+    appendMessage('user', fanStadiumQuery, null);
     input.value = '';
     sendBtn.disabled = true;
 
@@ -524,26 +562,26 @@
       const res = await fetch('/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, language: currentLang, stadium: currentStadium })
+        body: JSON.stringify({ query: fanStadiumQuery, language: currentLang, stadium: currentStadium })
       });
 
       removeTyping();
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Server error' }));
-        throw new Error(err.detail || `HTTP ${res.status}`);
+        const errData = await res.json().catch(() => ({ detail: 'Server error' }));
+        throw new Error(errData.detail || `HTTP ${res.status}`);
       }
 
-      const data = await res.json();
-      appendMessage('bot', data.response, {
-        cached: data.cached,
-        intent: data.intent,
-        crowd_level: data.crowd_level,
-        crowd_category: data.crowd_category
+      const fifaAgentResponse = await res.json();
+      appendMessage('bot', fifaAgentResponse.response, {
+        cached: fifaAgentResponse.cached,
+        fanQueryIntent: fifaAgentResponse.intent,
+        crowdLevel: fifaAgentResponse.crowd_level,
+        crowdCategory: fifaAgentResponse.crowd_category
       });
-    } catch (err) {
+    } catch (fetchError) {
       removeTyping();
-      errorBanner.textContent = `⚠ ${err.message}`;
+      errorBanner.textContent = `⚠ ${fetchError.message}`;
       errorBanner.style.display = 'block';
     } finally {
       sendBtn.disabled = false;
@@ -551,8 +589,8 @@
     }
   }
 
-  // ── Init ───────────────────────────────────────────────────────────────────
-  renderGrid(currentStadium);
+  // Initialise the stadium zone crowd grid on page load
+  renderStadiumZoneGrid(currentStadium);
 </script>
 </body>
 </html>
